@@ -9,6 +9,7 @@ var cellID = 0
 var step = 0
 var drawBorders = true;
 var updateConcentrations = false;
+var colorAct = false;
 
 
 function setup() {

@@ -37,10 +37,11 @@ var model_params = {
   lambda_act: 200,
   mu: -500,
   // mu: 0,
-  division_threshold: 250,
+  growth_rate: 0.3,
+  division_threshold: 80,
   T: 20,
-  J: [[0, 0, 20, 30, 0], [0, 0, 0, 0, 0] ,[20, 0, 100, 0, 0], [30, 0, 0, 30, 0], [20, 0, 0, 0, 0]], // index 0='ECM', 1='Skin', 2='Tip cell'
-  A: [0, 152, 250, 50, 50], // target areas, index 0=ECM, 1=Skin, 2=Tip cell
+  J: [[0, 0, 20, 30, 0], [0, 0, 0, 0, 0] ,[20, 0, 100, 0, 0], [30, 0, 0, 35, 0], [20, 0, 0, 0, 0]], // index 0='ECM', 1='Skin', 2='Tip cell'
+  A: [0, 152, 250, 50, 40], // target areas, index 0=ECM, 1=Skin, 2=Tip cell
   P: [0, 145, 340, 35, 35], // target perimeneters
 }
 
@@ -71,9 +72,9 @@ class CPM {
       }
     } else if (setting == SETTING.TUMOR) {
       this.updateConcentrations = false;
-      var x0 = 85, y0 = 85, d = 7;
-      for (let i=x0; i<x0+4*(d+1); i+=d+1) {
-        for (let j=y0; j<y0+4*(d+1); j+=d+1) {
+      var x0 = 93, y0 = 93, d = 6;
+      for (let i=x0; i<x0+2*(d+1); i+=d+1) {
+        for (let j=y0; j<y0+2*(d+1); j+=d+1) {
           this.addCell(CELL_TYPES.TUMOR, i, j, i+d, j+d);
         }
       }
@@ -168,17 +169,40 @@ class CPM {
   growth() {
     for (let c of this.cells) {
       if (c.type == CELL_TYPES.TUMOR) {
-        if (c.area >= model_params.division_threshold) {
+        if (c.area() >= model_params.division_threshold) {
           this.divide(c)
         } else {
-          c.targetArea++;
+          c.targetArea += random(0,1)*model_params.growth_rate;
         }
       }
     }
   }
 
   divide(cell) {
-
+    var p1 = cell.center();
+    var x1 = p1[0], y1 = p1[1], x2, y2;
+    var a = TWO_PI*random();
+    x2 = x1 + cos(a);
+    y2 = y1 + sin(a);
+    var newSites = [];
+    var oldSites = [];
+    for (let u of cell.sites) {
+      var d = (u.i-x1)*(y2-y1)-(u.j-y1)*(x2-x1)
+      if (d > 0) {
+        u.cellId = cellID
+        newSites.push(u)
+      } else {
+        oldSites.push(u)
+      }
+    }
+    cell.sites = oldSites;
+    var newCell = new Cell(cell.type, cellID, newSites, [])
+    newCell.findBorderSites();
+    cell.findBorderSites();
+    this.cells.push(newCell);
+    cell.targetArea = model_params.A[cell.type]
+    newCell.targetArea = model_params.A[newCell.type]
+    cellID++;
   }
 }
 

@@ -90,6 +90,16 @@ class Cell {
         return [x/L, y/L]
     }
 
+    findBorderSites() {
+        var newBorderSites = [];
+        for (let u of this.sites) {
+            if (u.isOnBorder()){
+                newBorderSites.push(u)
+            }
+        }
+        this.borderSites = newBorderSites;
+    }
+
     draw() {
         push();
         fill(color(COLOR[this.type]));
