@@ -28,6 +28,12 @@ class Site {
         push();
         // fill(color(COLOR[this.cellType]));
         var a = Math.floor(256*this.activityValue/model_params.max_act)
+        // var a = this.activityValue/model_params.max_act;
+        // if (a > 0.5) {
+        //     fill(Math.floor(256*2*a), 255-Math.floor(256*(2-2*a)), 0)
+        // } else {
+        //     fill(255-Math.floor(256*2*a), Math.floor(256*2*a), 0)
+        // }
         fill(a, 255-a, 0)
         rect(dx*this.i, dx*this.j, dx, dx);
         pop();

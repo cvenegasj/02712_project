@@ -35,13 +35,13 @@ var model_params = {
   lambda_area: 50,
   lambda_perimeter: 2,
   lambda_act: 200,
-  mu: -100,
+  mu: -500,
   // mu: 0,
   division_threshold: 250,
   T: 20,
-  J: [[0, null, 20], [null, null, null] ,[20, null, 100]], // index 0='ECM', 1='Skin', 2='Tip cell'
-  A: [0, 152, 250, 150, 150], // target areas, index 0=ECM, 1=Skin, 2=Tip cell
-  P: [0, 145, 340], // target perimeneters
+  J: [[0, 0, 20, 30, 0], [0, 0, 0, 0, 0] ,[20, 0, 100, 0, 0], [30, 0, 0, 30, 0], [20, 0, 0, 0, 0]], // index 0='ECM', 1='Skin', 2='Tip cell'
+  A: [0, 152, 250, 50, 50], // target areas, index 0=ECM, 1=Skin, 2=Tip cell
+  P: [0, 145, 340, 35, 35], // target perimeneters
 }
 
 var now_active = [];
@@ -69,6 +69,14 @@ class CPM {
             this.lattice_matrix[i][j].VEGF = C_vegf;
         }
       }
+    } else if (setting == SETTING.TUMOR) {
+      this.updateConcentrations = false;
+      var x0 = 85, y0 = 85, d = 7;
+      for (let i=x0; i<x0+4*(d+1); i+=d+1) {
+        for (let j=y0; j<y0+4*(d+1); j+=d+1) {
+          this.addCell(CELL_TYPES.TUMOR, i, j, i+d, j+d);
+        }
+      }
     }
   }
 
@@ -90,8 +98,6 @@ class CPM {
   }
   
   monteCarloStep() {
-    // print(cpm.cells[0].sites)
-    // print(cpm.cells[0].area())
     for (var i=0; i < lattice_width*lattice_height; i++) {
       // pick random site u ---- only from broder pixels???
       var u_i = Math.floor((Math.random() * lattice_height));
@@ -124,20 +130,9 @@ class CPM {
         }
       }
     }
-
-    // print(this.active_sites.length)
-    // print(now_active.length)
-    // for (let i=0; i<this.active_sites.length; i++) {
-    //   if (this.active_sites[i].activityValue == 0) {
-    //     this.active_sites.splice(i, 1);
-    //   } else {
-    //     this.active_sites[i].activityValue -= 1;
-    //   }
-    // }
     for (let v of now_active) {
       v.activityValue=model_params.max_act;
     }
-    // this.active_sites.push(now_active);
     now_active = [];
   }
 
