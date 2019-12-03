@@ -6,6 +6,12 @@ class Site {
         this.cellId = cellId;
         this.cellType = cellType; // integer
         this.activityValue = activityValue;
+        this.VEGF = 0;
+        if (cellType == CELL_TYPES.SKIN) {
+            this.O2 = model_params.max_O2;
+        } else {
+            this.O2 = 0;
+        }
     }
 
     isOnBorder(cellId) {
@@ -20,7 +26,9 @@ class Site {
 
     draw() {
         push();
-        fill(color(COLOR[this.cellType]));
+        // fill(color(COLOR[this.cellType]));
+        var a = Math.floor(256*this.activityValue/model_params.max_act)
+        fill(a, 255-a, 0)
         rect(dx*this.i, dx*this.j, dx, dx);
         pop();
     }

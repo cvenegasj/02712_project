@@ -4,9 +4,11 @@ var cpm;
 var lattice_width = 200;
 var lattice_height = 200;
 var dx = 3;
+var dt = 1;
 var cellID = 0
 var step = 0
 var drawBorders = true;
+var updateConcentrations = false;
 
 
 function setup() {
@@ -15,6 +17,8 @@ function setup() {
     canvas.parent("simulation-canvas");
     cpm = new CPM()
     cpm.addCell(CELL_TYPES.TIP, 95, 95, 105, 105)
+    cpm.addCell(CELL_TYPES.TIP, 75, 75, 85, 85)
+    // cpm.initialize(SETTING.CHEMOTAXIS)
 
 
     // background(235);
@@ -31,6 +35,9 @@ function draw() {
         c.draw()
     }
     cpm.monteCarloStep();
+    if (updateConcentrations) {
+        cpm.updateConcentrations();
+    }
     displayStep()
 }
 

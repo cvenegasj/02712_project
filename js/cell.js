@@ -80,6 +80,16 @@ class Cell {
         return false;
     }
 
+    center() {
+        var x=0 , y=0;
+        var L = this.area()
+        for (let i=0; i<L; i++) {
+            x += this.sites[i].i;
+            y += this.sites[i].j;
+        }
+        return [x/L, y/L]
+    }
+
     draw() {
         push();
         fill(color(COLOR[this.type]));

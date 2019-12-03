@@ -4,7 +4,7 @@ const CELL_TYPES = {
   TIP: 2,
   TUMOR:3,
   HYPOXIC: 4
-}
+};
 
 const COLOR = [
   "#EEEEEE",
@@ -12,18 +12,35 @@ const COLOR = [
   "#FFCC00",
   "#77BBFF",
   "#4C76B5"
-]
+];
+
+const SETTING = {
+  CHEMOTAXIS: 0,
+  TUMOR: 1,
+  ANGIOGENESIS: 2
+}
 
 // model parameters
 var model_params = {
-  max_act: 40,
-  lambda_act: 200,
-
+  max_act: 80,
+  max_O2: 100,
+  max_VEGF: 100,
+  D_O2: 0.001,
+  k_O2_decay: 1,
+  k_O2_uptake: 1,
+  D_VEGF: 0.00036,
+  k_VEGF_create: 1,
+  k_VEGF_decay: 1,
+  k_VEGF_uptake: 1,
   lambda_area: 50,
   lambda_perimeter: 2,
+  lambda_act: 200,
+  mu: -100,
+  // mu: 0,
+  division_threshold: 250,
   T: 20,
   J: [[0, null, 20], [null, null, null] ,[20, null, 100]], // index 0='ECM', 1='Skin', 2='Tip cell'
-  A: [0, 152, 500], // target areas, index 0=ECM, 1=Skin, 2=Tip cell
+  A: [0, 152, 250, 150, 150], // target areas, index 0=ECM, 1=Skin, 2=Tip cell
   P: [0, 145, 340], // target perimeneters
 }
 
@@ -42,8 +59,17 @@ class CPM {
     }
   }
 
-  initialize() {
-    
+  initialize(setting) {
+    if (setting == SETTING.CHEMOTAXIS) {
+      this.updateConcentrations = false;
+      this.addCell(CELL_TYPES.TIP, 0, 95, 10, 105);
+      for(var i = 0; i < lattice_height; ++i) {
+        var C_vegf = model_params.max_VEGF*i/lattice_height;
+        for(var j = 0; j < lattice_width; ++j) {
+            this.lattice_matrix[i][j].VEGF = C_vegf;
+        }
+      }
+    }
   }
 
   addCell(cellType, x0, y0, x1, y1) {
@@ -77,14 +103,11 @@ class CPM {
       // attempt copy of cell identity only if u and v belong to different cells
       if (u.cellId != v.cellId) { 
         var dH = deltaH_adhesion(u, v) 
-        + deltaH_area(u.cellId, v.cellId) + deltaH_perimeter();
+        + deltaH_area(u.cellId, v.cellId) + deltaH_perimeter(u.cellId, v.cellId) + deltaH_Chemotaxis(u, v);
         var dHact = deltaHact(u, v);
-        var biased_dH = dH - dHact;
+        var biased_dH = dH + dHact;
         // probabilistic success
             if (doCopy(biased_dH)) {
-                // print(u)
-                // print(v)
-                // print(cpm.cells[0].sites)
                 siteUpdate(u, v)// transformations in site v
             }
         }
@@ -94,18 +117,73 @@ class CPM {
   }
 
   updateActiveSites() {
-    for (let i=0; i<this.active_sites.length; i++) {
-      if (this.active_sites.activityValue == 0) {
-        this.active_sites.splice(i, 1);
-      } else {
-        this.active_sites.activityValue--;
+    for(let c of this.cells) {
+      for (let site of c.sites) {
+        if (site.activityValue > 0) {
+          site.activityValue -= 1;
+        }
       }
     }
-    for (let v of this.active_sites) {
+
+    // print(this.active_sites.length)
+    // print(now_active.length)
+    // for (let i=0; i<this.active_sites.length; i++) {
+    //   if (this.active_sites[i].activityValue == 0) {
+    //     this.active_sites.splice(i, 1);
+    //   } else {
+    //     this.active_sites[i].activityValue -= 1;
+    //   }
+    // }
+    for (let v of now_active) {
       v.activityValue=model_params.max_act;
     }
-    this.active_sites.push(now_active);
+    // this.active_sites.push(now_active);
     now_active = [];
+  }
+
+  updateConcentrations() {
+    var dO2 = Array(lattice_height).fill().map(() => Array(lattice_width).fill(0));
+    var dVEGF = Array(lattice_height).fill().map(() => Array(lattice_width).fill(0));
+    for(var i = 0; i < lattice_height; ++i) {
+      for(var j = 0; j < lattice_width; ++j) {
+          var moore = MooreNeighborhood(this.lattice_matrix[i][j])
+          if (this.lattice_matrix[i][j].cellType==CELL_TYPES.SKIN) {
+            dO2[i][j] = 0;
+          } else {
+            dO2[i][j] = model_params.D_O2*(-4*this.lattice_matrix[i][j].O2+
+              TotalO2(moore))/(dx*dx)-
+              model_params.k_O2_decay*this.latice_matrix[i][j].O2-
+              O2Uptake(this.lattice_matrix[i][j])
+          }
+          dVEGF[i][j] = model_params.D_VEGF*(-4*this.lattice_matrix[i][j].VEGF+
+            TotalVEGF(moore))/(dx*dx)-
+            model_params.k_VEGF_decay*this.latice_matrix[i][j].O2-
+            VEGFUptake(this.lattice_matrix[i][j])+
+            VEGFCreate(this.lattice_matrix[i][j])
+      }
+    }
+    for(var i = 0; i < lattice_height; ++i) {
+      for(var j = 0; j < lattice_width; ++j) {
+          this.lattice_matrix[i][j].O2 += dt*dO2[i][j]
+          this.lattice_matrix[i][j].D_VEGF += dt*dVEGF[i][j]
+      }
+    }
+  }
+
+  growth() {
+    for (let c of this.cells) {
+      if (c.type == CELL_TYPES.TUMOR) {
+        if (c.area >= model_params.division_threshold) {
+          this.divide(c)
+        } else {
+          c.targetArea++;
+        }
+      }
+    }
+  }
+
+  divide(cell) {
+
   }
 }
 
@@ -196,7 +274,15 @@ function deltaH_perimeter(srcCellId, tgtCellId) {
 
 // additional term for the Act model
 function deltaHact(u, v) {
-  return (model_params.lambda_act / model_params.max_act) * (geomMeanNeighborhood(u) - geomMeanNeighborhood(v));
+  return (model_params.lambda_act / model_params.max_act) * (geomMeanNeighborhood(v) - geomMeanNeighborhood(u));
+}
+
+function deltaH_Chemotaxis(u, v) {
+  if (u.cellType == CELL_TYPES.TIP) {
+    return model_params.mu*(v.VEGF - u.VEGF);
+  } else {
+    return 0;
+  }
 }
 
 function getCellById(id) {
@@ -314,4 +400,68 @@ function siteUpdate(u, v) {
   if (cell2 != null) {
     cell2.removeSite(v);
   }
+}
+
+function O2Uptake(site) {
+  if (site.cellType == CELL_TYPES.TUMOR || site.cellType == CELL_TYPES.TUMOR) {
+    if (model_params.k_O2_uptake <= site.O2) {
+      return model_params.k_O2_uptake;
+    } else {
+      return site.O2;
+    }
+  } else {
+    return 0;
+  }
+}
+
+function VEGFUptake(site) {
+  if (site.cellType == CELL_TYPES.SKIN) {
+    if (model_params.k_VEGF_uptake <= site.VEGF) {
+      return model_params.k_VEGF_uptake;
+    } else {
+      return site.VEGF;
+    }
+  } else {
+    return 0;
+  }
+}
+
+function VEGFCreate(site) {
+  if (site.cellType == CELL_TYPES.HYPOXIC) {
+    return model_params.k_VEGF_create;
+  } else {
+    return 0;
+  }
+}
+
+function MooreNeighborhood(site) {
+  var neighbors = []
+  if (site.i > 0) {
+    neighbors.push(cpm.lattice_matrix[site.i-1][site.j]);
+  }
+  if (site.i < lattice_height-1) {
+    neighbors.push(cpm.lattice_matrix[site.i+1][site.j]);
+  }
+  if (site.j > 0) {
+    neighbors.push(cpm.lattice_matrix[site.i][site.j-1]);
+  }
+  if (site.j < lattice_width-1) {
+    neighbors.push(cpm.lattice_matrix[site.i][site.j+1]);
+  }
+}
+
+function TotalO2(sites) {
+  var c = 0;
+  for (let u of sites) {
+    c += u.O2;
+  }
+  return c
+}
+
+function TotalVEGF(sites) {
+  var c = 0;
+  for (let u of sites) {
+    c += u.O2;
+  }
+  return c
 }
