@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<title>1-cell CPM</title>
+	<meta charset="utf-8">
+	<style type="text/css">
+		body 
+		{
+			background-color: white;
+			margin: 0px;
+		}
+		.handle {
+			border-radius: 5px;
+			-moz-border-radius: 5px;
+			-webkit-border-radius: 5px;
+			font-weight: bold;
+		}
+		.dragdealer{
+			font-size: 75%;
+			margin: 1em 0 1em 0;
+		}
+	</style>
+	
+	<script type="text/javascript" src="dragdealer.js"></script>
+	<link rel="stylesheet" type="text/css" href="dragdealer.css"></link>
+	
+	<script type="text/javascript">
+
+	/** Sliders for the model parameters are set up such that the
+		* default value is 1/4 of the max value */
+	var T_max = 80.0,
+
+		V_T_max = 4*500.0,
+		lambda_T_max = 200.0,
+		
+		P_max = 4*340.0, lambda_P_max = 4*2,
+
+		fscale = 3.0,
+		time = 1,
+		actmax_max = 4*25.0,
+		lambda_act_max = 4*100.0,
+		J_T_T_max = 4*100.0,
+		J_T_ECM_max = 4*20.0,
+		showme=0;
+
+	/* Global variables that are not model parameters */
+	var field, fwidth, fheight, canvas, ctx, i,j,k, stopit=0;
+
+	var cellpixels = [], cellborderpixels = [], bgborderpixels = [],
+		cellpixelsbirth = [];
+
+	var current_perimeter = 0;
+
+	binarySearch = function(a,find) {
+		var low = 0, high = a.length - 1, i;
+		while (low <= high) {
+			i = parseInt((low + high) / 2)
+			if (a[i] < find) { low = i + 1; continue; };
+			if (a[i] > find) { high = i - 1; continue; };
+			return true
+		}
+		return false
+	};
+
+	binaryInsert = function(a,find) {
+		var low = 0, high = a.length - 1, i;
+		while (low <= high) {
+			i = parseInt((low + high) / 2);
+			if (a[i] < find) { low = i + 1; continue; };
+			if (a[i] > find) { high = i - 1; continue; };
+			return false;
+		}
+		a.splice( low, 0, find );
+		return true;
+	};
+
+	binaryRemove = function(a,find) {
+		var low = 0, high = a.length - 1, i;
+		while (low <= high) {
+			i = parseInt((low + high) / 2);
+			if (a[i] < find) { low = i + 1; continue; };
+			if (a[i] > find) { high = i - 1; continue; };
+			a.splice( i, 1 );
+			return true;
+		}
+		return false;
+	};
+
+
+	/* A mod function with sane behaviour for negative numbers. */
+	function mod(x,y) {
+		return ((x%y)+y)%y;
+	}
+
+	function pxf( p ){
+		ctx.fillRect( fscale*p[0], fscale*p[1], fscale, fscale )
+	}
+
+	function col( hex ){
+		ctx.fillStyle="#"+hex;
+	}
+
+	function pxact( i ){
+		var age = (time - cellpixelsbirth[i])
+		return (age > actmax) ? 0 : actmax-age
+	}
+	
+	function ran(incl_min, incl_max) {
+		return Math.floor(Math.random() * (1.0 + incl_max - incl_min)) + incl_min;
+	}
+
+	/* Returns all pixels around p, not including
+		p itself */
+	function neigh( p ){
+		var xr = mod(p[0]+1,fwidth)
+		var xl = mod(p[0]-1,fwidth)
+		var yl = mod(p[1]-1,fheight)
+		var yr = mod(p[1]+1,fheight)
+		return [[xl,yl],[xl,p[1]],[xl,yr],[p[0],yl],
+		[p[0],yr],[xr,yl],[xr,p[1]],[xr,yr]];
+	}
+
+	function calcperimeter(){
+		var i, perimeter = 0
+		for( i = 0 ; i < bgborderpixels.length ; i ++ ){
+			var N = neigh( i2p( bgborderpixels[i] ) )
+			for( var k = 0 ; k < N.length ; k ++ ){
+				if( pixt( N[k] ) == 1 ){
+					perimeter ++
+				}
+			}
+		}
+		return perimeter
+	}
+
+	function calcborderpixels( x, y ){
+		var p = Array(2)
+		var local_perimeter = 0;
+		for( p[0]=x[0] ; p[0] <= y[0] ; p[0] ++ ){
+			for( p[1]=x[1] ; p[1] <= y[1] ; p[1] ++ ){
+				var t = pixt( p )
+				var isborder = false
+				var N = neigh( p )
+				for( var k = 0 ; k < N.length ; k ++ ){
+					if( pixt( N[k] ) != t ){
+						isborder = true; break;
+					}
+				}
+				var i = p2i(p)
+				if( t ){
+					binaryRemove( bgborderpixels, i )
+				} else {
+					binaryRemove( cellborderpixels , i )
+				}
+				var f = isborder ? binaryInsert : binaryRemove
+				f( t ? cellborderpixels : bgborderpixels, i )
+			}
+		}
+	}
+
+	function updatebordernear( p ){
+		var u = p.slice(), v = p.slice();
+		// u and v become corners of a rectangle containing the
+		// area to be updated
+		for( var i = 0 ; i < u.length ; i ++ ){
+			u[i] = (u[i]-3)
+			v[i] = (v[i]+3)
+		}
+		calcborderpixels( u, v )
+	}
+
+	function p2i( p ){
+		return (p[0] << 16) + p[1]
+	}
+
+	function i2p( i ){
+		return [i >> 16,i & 0xFFFF]
+	}
+
+	function addpix( p ){
+		var i = p2i(p)
+		cellpixelsbirth[i] = time
+		return binaryInsert( cellpixels, p2i(p) )
+	}
+
+	function delpix( p ){
+		var i = p2i(p)
+		delete cellpixelsbirth[i]
+		return binaryRemove( cellpixels, i )
+	}
+
+	function pixt( p ){
+		return binarySearch( cellpixels, p2i(p) ) ? 1 : 0;
+	}
+
+	function randpix( arr ){
+		var i = ran(0,arr.length-1)
+		return i2p( arr[i] )
+	}
+
+	function randneigh( p ){
+		var N = neigh( p )
+		return N[ran(0,N.length-1)]
+	}
+
+	function $id( id ){
+		return document.getElementById(id)
+	}
+
+	function addslider( what, start ){
+		window[what] = start
+		var f = function(x){ window[what] = window[what+"_max"] * x;
+		$id(what+'val').innerHTML = window[what].toPrecision(3) }
+		new Dragdealer( what+'slider', 
+			{ x : window[what] /  window[what+"_max"], animationCallback: f } )
+	}
+
+
+	function each( a, f ){
+		for( var i = 0 ; i < a.length ; i ++ ){
+			f(a[i])
+		}
+	}
+
+	/**
+		*  Adhesion between two cell types
+		*/
+	function J(t1,t2){
+		return t1==0? (t2==0?0:J_T_ECM) : (t2==0?J_T_ECM:J_T_T) ;
+	}
+
+	/**
+		*  Returns the hamiltonian around pixel p 
+		*/
+	function H(p,tf){
+		var r = 0
+		var t = tf(p), t2
+		var N = neigh( p )
+		for( var i = 0 ; i < N.length ; i ++ ){
+			t2 = tf(N[i]) 
+			if( t2 != t )
+				r += J(t,tf(N[i]))
+		}
+		return r
+	}
+
+	/**
+		* Useful for debugging
+		*/
+	function printNeighbourhood( p, tf ){
+		var N = neigh( p )
+		console.log( tf(N[0]),tf(N[1]),tf(N[2]) )
+		console.log( tf(N[3]),tf(p),tf(N[4]) )
+		console.log( tf(N[5]),
+			tf(N[6]),tf(N[7]) )
+	}
+
+	/** 
+		* Returns the perimeter of the cell around pixel p 
+		*/
+	function Per(p,tf){
+		var r = 0, i
+		var N = neigh( p ), N2
+		N.push(p)
+		for( var i = 0 ; i < N.length ; i ++ ){
+			if( tf(N[i])==0 ){ // for each background pixel,
+				N2 = neigh(N[i])
+				var dr=0
+				for( var j = 0 ; j < N2.length ; j ++ ){
+					// compute the number of neighbouring cell pixels
+					if( tf(N2[j])==1 ){
+						dr++
+					}
+				}
+				r+=dr
+			}
+		}
+		return r
+	}
+
+	/** 
+		* Returns a "view" of the lattice where pixel p is changed to type v
+		* Return value is a function from lattice coordinates to cell types
+		*/
+	function maskpixt( p, v ){
+		var i = p2i( p )
+		return function( pp ){ 
+			if( p2i( pp ) == i ){ return v } else { return pixt(pp) }
+		} 
+	}
+
+	/** 
+		* Evaluates whether a copy attempt is successful (Metropolis algorithm)
+		*/
+	function docopy( deltaH ){
+		if( deltaH < 0 ) return true;
+		return Math.random() < Math.exp( -deltaH / T )
+	}
+
+	function setpix( p, i ){
+		if( i == 0 ) return delpix( p )
+		return addpix( p )
+	}
+
+	function volconstraint( vgain ){
+		var vdiff = V_T - (cellpixels.length + vgain)
+		return lambda_T*vdiff*vdiff
+	}
+
+	function perimeterconstraint( vgain ){
+		var vdiff = P - (current_perimeter + vgain)
+		return lambda_P*vdiff*vdiff
+	}
+
+	/** 
+		* average activity values within cell around pixel p,
+		* using arithmetic averageing
+		*/ 
+	function activityAtArith( p ){
+		var t = pixt( p )
+		if( t == 0 ){ return 0 }
+		var N = neigh( p )
+		var nN = 1
+		var r = pxact( p2i( p ) )
+		for( var i = 0 ; i < N.length ; i ++ ){ 
+			if( pixt(N[i]) == t ){
+				r += pxact( p2i( N[i] ) )
+				nN ++ 
+			}
+		}
+		return r/nN
+	}
+
+	/** 
+		* average activity values within cell around pixel p,
+		* using geometric averageing
+		*/
+	function activityAtGeom( p ){
+		var t = pixt( p )
+		if( t == 0 ){ return 0 }
+		var N = neigh( p )
+		var nN = 1
+		var r = pxact( p2i( p ) )
+		for( var i = 0 ; i < N.length ; i ++ ){ 
+			if( pixt(N[i]) == t ){
+				if( pxact( p2i( N[i] ) ) == 0 ) return 0
+				r *= pxact( p2i( N[i] ) )
+				nN ++ 
+			}
+		}
+		return Math.pow(r,1/nN)
+	}
+
+	/* Choice of averaging */
+	var activityAt = activityAtGeom
+
+	/* The below function executes two monte carlo steps
+		*/
+	function mainloop(){
+		var delta_t = 0.0
+		while( delta_t < 1.0 ){
+
+			delta_t += 1./(bgborderpixels.length + cellborderpixels.length)
+
+			var actor = ran(0,1)
+			var p1 = randpix( [bgborderpixels, cellborderpixels][actor] )
+			var p2 = randneigh( p1 )
+
+			if( pixt( p2 ) != actor ){
+
+				pixt_change = maskpixt( p2, actor )
+
+				var diff_perimeter = Per(p2,pixt_change) - Per(p2,pixt)
+
+				var diff_area = actor?1:-1
+
+				var deltaH = H(p2,pixt_change) - H(p2,pixt) +
+					volconstraint( diff_area ) - volconstraint( 0 ) +
+					perimeterconstraint( diff_perimeter ) -
+						perimeterconstraint( 0 ) +
+					lambda_act*(activityAt( p2 ) - activityAt( p1 ))/actmax
+				if( docopy( deltaH ) && setpix( p2, actor ) ){
+					updatebordernear( p2 )
+					current_perimeter += diff_perimeter
+				}
+			}
+		}
+		time ++
+		drawfield()
+		if( !stopit ){
+			requestAnimationFrame( mainloop )
+		}
+	}
+
+	/* draws the lattice */
+	function drawfield(){
+		col("FFFFFF")
+		var tohex = function(d){
+			var dd=parseInt(255*d)
+			if( dd>15 ){
+				return dd.toString(16)
+			} else {
+				return "0"+dd.toString(16)
+			}
+		}
+		ctx.fillRect( 0,0, canvas.width, canvas.height )
+		for( var i = 0 ; i < cellpixels.length ; i ++ ){
+			var a = pxact(cellpixels[i])/actmax
+			if( a > 0.5 ){
+				col( "FF"+tohex(2-2*a)+"00" )
+			} else if( a > 0 ){
+				col( tohex(2*a)+"FF00" )
+				//console.log(  "FF"+tohex(2*a)+tohex(1-2*a) );
+			} else {
+				col( "00FF00" )
+			}
+			pxf(i2p(cellpixels[i]))
+		}
+	}
+
+	/* Initialization of GUI and simulation */
+	function runit(){
+		each( ['V_T','T','P','lambda_P',
+			'actmax','lambda_act','lambda_T','J_T_T','J_T_ECM'], function(p){
+			addslider( p, 0.25*window[p+'_max'] ) } ) 
+
+		canvas = document.getElementById("c")
+		fwidth = canvas.width/fscale; fheight = canvas.height/fscale
+		ctx = canvas.getContext("2d")
+		addpix( [50,50] )
+		calcborderpixels( [49, 49], [51, 51] )
+		current_perimeter = calcperimeter()
+		mainloop()
+	}
+	</script>
+</head>
+<body onload="runit()" onclick="stopit=0; showme=1">
+
+<div style="width:600px; margin:auto">
+
+	<h1>A single Act cell</h1>
+
+	<p>
+		This is a simulation of a single Act cell in medium (ECM). The default parameters give rise 
+		to an amoeboid migration pattern. Drag the <strong>Max<sub>act</sub></strong> slider to a higher
+		value (e.g., 80) to obtain keratocyte-like migration.
+	</p>
+
+	<div id="Tslider" class="dragdealer rounded-cornered" style="width:600px">
+		<div class="red-bar handle">T=<span id="Tval">0</span></div>
+	</div>
+
+	<div id="V_Tslider" class="dragdealer rounded-cornered" style="width:600px">
+		<div class="red-bar handle">A<sub>cell</sub>=<span id="V_Tval">0</span></div>
+	</div>
+
+	<div id="lambda_Tslider" class="dragdealer rounded-cornered" style="width:600px">
+		<div class="red-bar handle">&lambda;<sub>Area</sub>=<span id="lambda_Tval">0</span></div>
+	</div>
+
+	<div id="Pslider" class="dragdealer rounded-cornered" style="width:600px">
+		<div class="red-bar handle">P=<span id="Pval">0</span></div>
+	</div>
+
+	<div id="lambda_Pslider" class="dragdealer rounded-cornered" style="width:600px">
+		<div class="red-bar handle">&lambda;<sub>Perimeter</sub>=<span id="lambda_Pval">0</span></div>
+	</div>
+
+	<div id="actmaxslider" class="dragdealer rounded-cornered" style="width:600px">
+		<div class="red-bar handle">Max<sub>act</sub>=<span id="actmaxval">0</span></div>
+	</div>
+
+	<div id="lambda_actslider" class="dragdealer rounded-cornered" style="width:600px">
+		<div class="red-bar handle">&lambda;<sub>act</sub>=<span id="lambda_actval">0</span></div>
+	</div>
+
+	<div id="J_T_Tslider" class="dragdealer rounded-cornered" style="width:600px">
+		<div class="red-bar handle">J<sub>cell,cell</sub>=<span id="J_T_Tval">0</span></div>
+	</div>
+
+	<div id="J_T_ECMslider" class="dragdealer rounded-cornered" style="width:600px">
+		<div class="red-bar handle">J<sub>cell,ECM</sub>=<span id="J_T_ECMval">0</span></div>
+	</div>
+
+	<canvas id="c" width="600" height="600" style="border:1px solid black">
+	</canvas>
+</div>
+
+</body>
+</html>
