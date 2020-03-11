@@ -8,7 +8,7 @@ several different cellular behaviors, including cell motility based on actin tre
 
 The complete report and model specifications can be found <a href="https://drive.google.com/file/d/13li3Fph4upv7blA_9rAFgvEld-MjQF-R/view" target="_blank">here</a>.
 
-[![Screenshot of app 1](https://cvenegasj.github.io//02601_project_master_v6/img_3.png)](https://aseibel42.github.io/02601_project_master_v6/)
+![Screenshot 1](https://cvenegasj.github.io/02712_project/cell_motility_1.png)
 
 ## Methods
 The basic Cellular Potts Model (CPM) has three main characteristics:
@@ -24,3 +24,8 @@ phenomena observed in tumours.
 ## Technologies used
 * The app has been written entirely in the JavaScript language (ES6 specification).
 * The [p5.js](http://p5js.org/) library was used for visualization and rendering purposes.
+
+## Demo videos
+1. Actin-Driven Cell Motility CPM Simulation: <a href="https://youtu.be/GcAfP1gaiTk" target="_blank">https://youtu.be/GcAfP1gaiTk</a>
+2. Chemotaxis CPM Simulation: <a href="https://youtu.be/XPplzS0niqs" target="_blank">https://youtu.be/XPplzS0niqs</a>
+3. Tumor Growth CPM Simulation: <a href="https://youtu.be/PZ6Z2IzU2Js" target="_blank">https://youtu.be/PZ6Z2IzU2Js</a>
