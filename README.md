@@ -8,7 +8,7 @@ several different cellular behaviors, including cell motility based on actin tre
 
 The complete report and model specifications can be found <a href="https://drive.google.com/file/d/13li3Fph4upv7blA_9rAFgvEld-MjQF-R/view" target="_blank">here</a>.
 
-![Screenshot 1](https://cvenegasj.github.io/02712_project/cell_motility_1.png)
+![Screenshot 1](cell_motility_1.png)
 
 ## Methods
 The basic Cellular Potts Model (CPM) has three main characteristics:
